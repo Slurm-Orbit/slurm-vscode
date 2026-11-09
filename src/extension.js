@@ -30,14 +30,15 @@ async function runSlurmFile(uri, onSubmitted) {
     const { submitSlurmJob } = await import('slurmjs');
     const jobId = await submitSlurmJob(target.fsPath);
     vscode.window.showInformationMessage(`作业已提交：#${jobId}`);
-    onSubmitted?.();
   } catch (error) {
     vscode.window.showErrorMessage(error.message || '作业提交失败');
+    return;
   }
+  onSubmitted();
 }
 
 async function cancelRunningJob(element, onCancelled) {
-  const job = element?.job || (element?.jobId != null ? element : null);
+  const job = element?.job;
   if (!job?.jobId) {
     return;
   }
@@ -57,19 +58,18 @@ async function cancelRunningJob(element, onCancelled) {
     const { cancelSlurmJob } = await import('slurmjs');
     await cancelSlurmJob(jobId);
     vscode.window.showInformationMessage(`已请求取消作业 #${jobId}`);
-    onCancelled?.();
   } catch (error) {
     vscode.window.showErrorMessage(error.message || '取消作业失败');
+    return;
   }
+  onCancelled();
 }
 
 function activate(context) {
-  const providers = {
-    jobs: new JobHistoryProvider(VIEWS.jobs),
-    nodes: new NodeProvider(VIEWS.nodes),
-    accounts: new AccountProvider(VIEWS.accounts),
-  };
-  const allProviders = Object.values(providers);
+  const jobs = new JobHistoryProvider(VIEWS.jobs);
+  const nodes = new NodeProvider(VIEWS.nodes);
+  const accounts = new AccountProvider(VIEWS.accounts);
+  const allProviders = [jobs, nodes, accounts];
 
   context.subscriptions.push(
     ...allProviders,
@@ -78,24 +78,19 @@ function activate(context) {
         provider.refresh();
       }
     }),
-    vscode.commands.registerCommand('slurm-gui.focus', () => {
-      return vscode.commands.executeCommand(`${VIEWS.jobs}.focus`);
-    }),
-    vscode.commands.registerCommand('slurm-gui.run', (uri) => {
-      return runSlurmFile(uri, () => providers.jobs.refresh());
-    }),
-    vscode.commands.registerCommand('slurm-gui.cancelJob', (element) => {
-      return cancelRunningJob(element, () => {
-        providers.jobs.refresh();
-        providers.nodes.refresh();
-      });
-    })
+    vscode.commands.registerCommand('slurm-gui.focus', () =>
+      vscode.commands.executeCommand(`${VIEWS.jobs}.focus`)
+    ),
+    vscode.commands.registerCommand('slurm-gui.run', (uri) =>
+      runSlurmFile(uri, () => jobs.refresh())
+    ),
+    vscode.commands.registerCommand('slurm-gui.cancelJob', (element) =>
+      cancelRunningJob(element, () => {
+        jobs.refresh();
+        nodes.refresh();
+      })
+    )
   );
 }
 
-function deactivate() {}
-
-module.exports = {
-  activate,
-  deactivate,
-};
+module.exports = { activate };

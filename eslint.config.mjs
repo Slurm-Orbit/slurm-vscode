@@ -9,6 +9,7 @@ export default defineConfig([
       sourceType: "commonjs",
       globals: { ...globals.node },
     },
+    plugins: { js },
+    extends: ["js/recommended"],
   },
-  { files: ["**/*.js"], plugins: { js }, extends: ["js/recommended"] },
 ]);

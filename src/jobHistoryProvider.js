@@ -1,12 +1,6 @@
+const dayjs = require('dayjs');
 const path = require('path');
 const vscode = require('vscode');
-const {
-  asText,
-  fetchJobHistory,
-  formatDateTime,
-  formatShortTime,
-  jobDate,
-} = require('./slurm');
 const {
   SlurmTreeProvider,
   createDetail,
@@ -33,12 +27,16 @@ const JOB_STATE_ICONS = {
 
 class JobHistoryProvider extends SlurmTreeProvider {
   constructor(viewId) {
-    super(viewId, { emptyMessage: '暂无作业历史', showCollapseAll: true });
+    super(viewId, '暂无作业历史');
   }
 
   async load() {
-    const jobs = await fetchJobHistory();
-    return jobs.map((job) => ({ job, children: jobDetails(job) }));
+    const { getSlurmJobInfo } = await import('slurmjs');
+    const jobs = await getSlurmJobInfo();
+    const items = Array.isArray(jobs) ? jobs : [];
+    const time = (job) => (job?.submitTime || job?.startTime || job?.endTime)?.getTime() || 0;
+    items.sort((a, b) => time(b) - time(a) || Number(b?.jobId ?? 0) - Number(a?.jobId ?? 0));
+    return items.map((job) => ({ job, children: jobDetails(job) }));
   }
 
   describe(items) {
@@ -51,66 +49,57 @@ class JobHistoryProvider extends SlurmTreeProvider {
     }
 
     const job = element.job;
-    const state = asText(job.status) || '未知';
-    const submittedAt = jobDate(job);
+    const state = (Array.isArray(job.status) ? job.status.join('+') : job.status) || '未知';
+    const stateKey = String(state).toUpperCase().split(/[+\s]/)[0];
+    const [icon, color] = JOB_STATE_ICONS[stateKey] || ['circle-outline', undefined];
+    const submittedAt = job.submitTime || job.startTime || job.endTime || null;
     const item = new vscode.TreeItem(
-      asText(job.name) || '未命名作业',
+      job.name || '未命名作业',
       element.children.length
         ? vscode.TreeItemCollapsibleState.Collapsed
         : vscode.TreeItemCollapsibleState.None
     );
-    item.id = `slurm-job-${asText(job.jobId)}`;
+    item.id = `slurm-job-${job.jobId}`;
     item.description = [
-      job.jobId == null ? '' : `#${asText(job.jobId)}`,
+      job.jobId == null ? '' : `#${job.jobId}`,
       state,
-      formatShortTime(submittedAt),
+      submittedAt ? dayjs(submittedAt).format('MM-DD HH:mm') : '',
     ]
       .filter(Boolean)
       .join(' · ');
-    item.iconPath = jobStateIcon(state);
-    item.contextValue =
-      normalizeJobState(state) === 'RUNNING' ? 'slurmJob.running' : 'slurmJob';
+    item.iconPath = new vscode.ThemeIcon(
+      icon,
+      color ? new vscode.ThemeColor(color) : undefined
+    );
+    if (stateKey === 'RUNNING') {
+      item.contextValue = 'slurmJob.running';
+    }
     return item;
   }
 }
 
-function normalizeJobState(state) {
-  return asText(state).toUpperCase().split(/[+\s]/)[0];
-}
-
-function jobStateStyle(state) {
-  return JOB_STATE_ICONS[normalizeJobState(state)] || ['circle-outline', undefined];
-}
-
-function jobStateIcon(state) {
-  const [icon, color] = jobStateStyle(state);
-  return new vscode.ThemeIcon(icon, color ? new vscode.ThemeColor(color) : undefined);
-}
-
 function jobDetails(job) {
-  const state = asText(job.status) || '未知';
-  const [stateIcon, stateColor] = jobStateStyle(state);
-  const exitCode = asText(job.exitCode);
+  const exitCode = job.exitCode;
   const exitOk = Number(job.exitCode) === 0;
-  const stdout = asText(job.stdout);
-  const stderr = asText(job.stderr);
+  const stdout = job.stdout || '';
+  const stderr = job.stderr || '';
+  const timeText = (value) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '');
 
   return [
-    createDetail('状态', state, stateIcon, stateColor),
-    createDetail('用户', asText(job.user), 'account'),
-    createDetail('账户', asText(job.account), 'organization'),
-    createDetail('分区', asText(job.partition), 'list-unordered'),
-    createDetail('集群', asText(job.cluster), 'server'),
-    createDetail('提交时间', formatDateTime(job.submitTime), 'calendar'),
-    createDetail('开始时间', formatDateTime(job.startTime), 'calendar'),
-    createDetail('结束时间', formatDateTime(job.endTime), 'calendar'),
+    createDetail('用户', job.user, 'account'),
+    createDetail('账户', job.account, 'organization'),
+    createDetail('分区', job.partition, 'list-unordered'),
+    createDetail('集群', job.cluster, 'server'),
+    createDetail('提交时间', timeText(job.submitTime), 'calendar'),
+    createDetail('开始时间', timeText(job.startTime), 'calendar'),
+    createDetail('结束时间', timeText(job.endTime), 'calendar'),
     createDetail(
       '退出码',
       exitCode,
       exitOk ? 'pass' : 'error',
       exitOk ? 'charts.green' : 'charts.red'
     ),
-    createDetail('工作目录', asText(job.workDir), 'folder'),
+    createDetail('工作目录', job.workDir, 'folder'),
     createDetail(
       '标准输出',
       stdout,

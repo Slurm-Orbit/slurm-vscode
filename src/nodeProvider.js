@@ -1,11 +1,5 @@
+const dayjs = require('dayjs');
 const vscode = require('vscode');
-const {
-  asArray,
-  asText,
-  fetchNodes,
-  formatDateTime,
-  formatMemory,
-} = require('./slurm');
 const {
   SlurmTreeProvider,
   createDetail,
@@ -50,12 +44,20 @@ const STATE_PRIORITY = [
 
 class NodeProvider extends SlurmTreeProvider {
   constructor(viewId) {
-    super(viewId, { emptyMessage: '暂无节点', showCollapseAll: true });
+    super(viewId, '暂无节点');
   }
 
   async load() {
-    const nodes = await fetchNodes();
-    return nodes.map((node) => ({ node, children: nodeDetails(node) }));
+    const { getSlurmNodeInfo } = await import('slurmjs');
+    const nodes = await getSlurmNodeInfo();
+    return (Array.isArray(nodes) ? nodes : [])
+      .sort((a, b) =>
+        (a?.name || '').localeCompare(b?.name || '', undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        })
+      )
+      .map((node) => ({ node, children: nodeDetails(node) }));
   }
 
   describe(items) {
@@ -68,8 +70,13 @@ class NodeProvider extends SlurmTreeProvider {
     }
 
     const node = element.node;
-    const name = asText(node.name) || asText(node.hostname) || '未命名节点';
-    const state = asText(node.state) || 'UNKNOWN';
+    const name = node.name || node.hostname || '未命名节点';
+    const states = [].concat(node.state || [])
+      .flatMap((state) => String(state).toUpperCase().split('+'))
+      .filter(Boolean);
+    const state = states.join('+') || 'UNKNOWN';
+    const stateKey = STATE_PRIORITY.find((candidate) => states.includes(candidate)) || state;
+    const [icon, color] = NODE_STATE_STYLES[stateKey] || ['vm', undefined];
     const item = new vscode.TreeItem(
       name,
       element.children.length
@@ -78,43 +85,48 @@ class NodeProvider extends SlurmTreeProvider {
     );
     item.id = `slurm-node-${name}`;
     item.description = [
-      asArray(node.partitions).map(asText).join(', '),
+      [].concat(node.partitions || []).join(', '),
       state,
       cpuText(node),
     ]
       .filter(Boolean)
       .join(' · ');
-    item.iconPath = nodeStateIcon(node);
-    item.contextValue = 'slurmNode';
+    item.iconPath = new vscode.ThemeIcon(
+      icon,
+      color ? new vscode.ThemeColor(color) : undefined
+    );
     return item;
   }
 }
 
 function cpuText(node) {
-  const total = Number(node.cpus);
-  if (!Number.isFinite(total) || total <= 0) {
+  const total = numberOrNull(node.cpus);
+  if (total == null || total <= 0) {
     return '';
   }
-  const allocated = Number(node.allocCpus);
-  return `${Number.isFinite(allocated) ? allocated : 0}/${total} CPU`;
-}
-
-function nodeStateStyle(node) {
-  const states = asArray(node.state)
-    .flatMap((state) => asText(state).toUpperCase().split('+'))
-    .filter(Boolean);
-  const key = STATE_PRIORITY.find((state) => states.includes(state)) || states[0] || 'UNKNOWN';
-  return NODE_STATE_STYLES[key] || ['vm', undefined];
-}
-
-function nodeStateIcon(node) {
-  const [icon, color] = nodeStateStyle(node);
-  return new vscode.ThemeIcon(icon, color ? new vscode.ThemeColor(color) : undefined);
+  return `${numberOrNull(node.allocCpus) ?? 0}/${total} CPU`;
 }
 
 function numberOrNull(value) {
+  if (value == null || value === '') {
+    return null;
+  }
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function formatMemory(megabytes) {
+  const value = Number(megabytes);
+  if (!Number.isFinite(value) || value <= 0) {
+    return '';
+  }
+  if (value >= 1024 * 1024) {
+    return `${(value / 1024 / 1024).toFixed(1)} TB`;
+  }
+  if (value >= 1024) {
+    return `${(value / 1024).toFixed(value >= 10240 ? 0 : 1)} GB`;
+  }
+  return `${Math.round(value)} MB`;
 }
 
 function cpuSummary(node) {
@@ -144,27 +156,26 @@ function memorySummary(node) {
 }
 
 function nodeDetails(node) {
-  const name = asText(node.name) || asText(node.hostname);
-  const state = asText(node.state) || 'UNKNOWN';
-  const [stateIcon, stateColor] = nodeStateStyle(node);
-  const hostname = asText(node.hostname);
-  const address = asText(node.address);
-  const load = numberOrNull(node.cpuLoad);
+  const name = node.name || node.hostname;
+  const hostname = node.hostname;
+  const address = node.address;
 
   return [
-    createDetail('状态', state, stateIcon, stateColor),
-    createDetail('分区', asArray(node.partitions).map(asText).join(', '), 'list-unordered'),
+    createDetail('分区', [].concat(node.partitions || []).join(', '), 'list-unordered'),
     createDetail('CPU', cpuSummary(node), 'pulse'),
-    createDetail('CPU 负载', load == null ? '' : `${load}%`, 'graph'),
     createDetail('内存', memorySummary(node), 'database'),
     createDetail('临时磁盘', formatMemory(node.disk), 'save'),
-    createDetail('GRES', asText(node.gres), 'device-desktop'),
-    createDetail('GRES 已用', asText(node.gresUsed), 'device-desktop'),
-    createDetail('架构', asText(node.architecture), 'symbol-structure'),
-    createDetail('系统', asText(node.os), 'terminal'),
+    createDetail('GRES', node.gres, 'device-desktop'),
+    createDetail('GRES 已用', node.gresUsed, 'device-desktop'),
+    createDetail('架构', node.architecture, 'symbol-structure'),
+    createDetail('系统', node.os, 'terminal'),
     createDetail('地址', address && address !== name ? address : '', 'globe'),
     createDetail('主机名', hostname && hostname !== name ? hostname : '', 'server'),
-    createDetail('启动时间', formatDateTime(node.bootTime), 'calendar'),
+    createDetail(
+      '启动时间',
+      node.bootTime ? dayjs(node.bootTime).format('YYYY-MM-DD HH:mm') : '',
+      'calendar'
+    ),
   ].filter(Boolean);
 }
 

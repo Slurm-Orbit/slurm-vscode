@@ -2,19 +2,14 @@
   "name": "slurm-gui",
   "displayName": "Slurm GUI",
   "description": "在活动栏侧边栏中查看 Slurm 集群的可视化工具",
+  "publisher": "secretqsan",
   "version": "0.0.1",
+  "license": "Apache-2.0",
   "engines": {
     "vscode": "^1.120.0"
   },
   "categories": [
     "Visualization"
-  ],
-  "activationEvents": [
-    "onView:slurm-gui.jobs",
-    "onView:slurm-gui.nodes",
-    "onView:slurm-gui.accounts",
-    "onCommand:slurm-gui.run",
-    "onCommand:slurm-gui.cancelJob"
   ],
   "main": "./src/extension.js",
   "contributes": {
@@ -103,11 +98,6 @@
           "command": "slurm-gui.cancelJob",
           "when": "view == slurm-gui.jobs && viewItem == slurmJob.running",
           "group": "inline"
-        },
-        {
-          "command": "slurm-gui.cancelJob",
-          "when": "view == slurm-gui.jobs && viewItem == slurmJob.running",
-          "group": "1_actions"
         }
       ],
       "view/title": [
@@ -128,6 +118,7 @@
     "globals": "^17.13.0"
   },
   "dependencies": {
+    "dayjs": "^1.11.23",
     "slurmjs": "^1.1.0"
   }
 }

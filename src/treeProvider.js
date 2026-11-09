@@ -1,5 +1,4 @@
 const vscode = require('vscode');
-const { readError } = require('./slurm');
 
 function createDetail(label, value, icon, color, command) {
   const text = value == null ? '' : String(value);
@@ -28,10 +27,8 @@ function createDetailTreeItem(detail) {
 }
 
 class SlurmTreeProvider {
-  constructor(viewId, options = {}) {
-    this.viewId = viewId;
-    this._emptyMessage = options.emptyMessage || '暂无数据';
-    this._showCollapseAll = Boolean(options.showCollapseAll);
+  constructor(viewId, emptyMessage) {
+    this._emptyMessage = emptyMessage;
     this._items = [];
     this._loaded = false;
     this._error = '';
@@ -43,7 +40,7 @@ class SlurmTreeProvider {
 
     this._view = vscode.window.createTreeView(viewId, {
       treeDataProvider: this,
-      showCollapseAll: this._showCollapseAll,
+      showCollapseAll: true,
     });
     this._view.message = '读取中…';
   }
@@ -64,23 +61,11 @@ class SlurmTreeProvider {
     this._onDidChangeTreeData.fire();
   }
 
-  getTreeItem(element) {
-    return element;
-  }
-
   getChildren(element) {
     if (element) {
       return Array.isArray(element.children) ? element.children : [];
     }
     return this._ensureLoaded();
-  }
-
-  async load() {
-    return [];
-  }
-
-  describe(items) {
-    return `${items.length} 项`;
   }
 
   async _ensureLoaded() {
@@ -104,9 +89,14 @@ class SlurmTreeProvider {
           if (generation !== this._generation) {
             return this._items;
           }
+          const message = error?.message || String(error || '读取失败');
           this._items = [];
           this._loaded = true;
-          this._error = readError(error);
+          this._error = /not found|ENOENT/i.test(message)
+            ? '未找到 Slurm 命令，请确认本机已安装 Slurm 并加入 PATH。'
+            : /json|unexpected|parse/i.test(message)
+              ? '无法解析 Slurm 命令输出，请确认 Slurm 版本支持 --json。'
+              : message;
           this._updateView();
           return this._items;
         }
