@@ -1,0 +1,133 @@
+{
+  "name": "slurm-gui",
+  "displayName": "Slurm GUI",
+  "description": "在活动栏侧边栏中查看 Slurm 集群的可视化工具",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.120.0"
+  },
+  "categories": [
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onView:slurm-gui.jobs",
+    "onView:slurm-gui.nodes",
+    "onView:slurm-gui.accounts",
+    "onCommand:slurm-gui.run",
+    "onCommand:slurm-gui.cancelJob"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "slurm-gui",
+          "title": "Slurm",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "slurm-gui": [
+        {
+          "id": "slurm-gui.jobs",
+          "name": "作业历史"
+        },
+        {
+          "id": "slurm-gui.nodes",
+          "name": "节点"
+        },
+        {
+          "id": "slurm-gui.accounts",
+          "name": "账户"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "id": "slurm",
+        "aliases": [
+          "Slurm",
+          "slurm"
+        ],
+        "extensions": [
+          ".slurm"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "slurm-gui.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)",
+        "category": "Slurm"
+      },
+      {
+        "command": "slurm-gui.focus",
+        "title": "打开侧边栏",
+        "category": "Slurm"
+      },
+      {
+        "command": "slurm-gui.run",
+        "title": "运行",
+        "icon": "$(play)",
+        "category": "Slurm"
+      },
+      {
+        "command": "slurm-gui.cancelJob",
+        "title": "取消作业",
+        "icon": "$(stop-circle)",
+        "category": "Slurm"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "slurm-gui.run",
+          "when": "editorLangId == slurm",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "slurm-gui.run",
+          "when": "editorLangId == slurm"
+        },
+        {
+          "command": "slurm-gui.cancelJob",
+          "when": "false"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "slurm-gui.cancelJob",
+          "when": "view == slurm-gui.jobs && viewItem == slurmJob.running",
+          "group": "inline"
+        },
+        {
+          "command": "slurm-gui.cancelJob",
+          "when": "view == slurm-gui.jobs && viewItem == slurmJob.running",
+          "group": "1_actions"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "slurm-gui.refresh",
+          "when": "view == slurm-gui.jobs || view == slurm-gui.nodes || view == slurm-gui.accounts",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0"
+  },
+  "dependencies": {
+    "slurmjs": "^1.1.0"
+  }
+}
